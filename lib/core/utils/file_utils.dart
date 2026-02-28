@@ -10,11 +10,6 @@ import 'package:tar/tar.dart';
 import 'package:xterm/xterm.dart';
 
 /// 收集 .tar.gz 中的硬链接映射
-/// key 为链接文件在归档中的路径（entry.name）
-/// value 为链接所指向的目标路径（header.linkName）
-/// Collect hard link mappings in .tar.gz
-/// key is the path of the link file in the archive (entry.name)
-/// value is the target path of the link (header.linkName)
 Future<Map<String, String>> getHardLinkMap(String tarGzPath) async {
   final result = <String, String>{};
   final stream = File(tarGzPath).openRead().transform(gzip.decoder);
@@ -34,30 +29,18 @@ Future<Map<String, String>> getHardLinkMap(String tarGzPath) async {
 }
 
 /// 使用 archive_io + TarFile 收集 .tar.gz 中的硬链接映射
-/// key 为链接文件在归档中的路径（tf.filename）
-/// value 为链接所指向的目标路径（tf.nameOfLinkedFile）
-/// Collect hard link mappings in .tar.gz
-/// key is the path of the link file in the archive (tf.filename)
-/// value is the target path of the link (tf.nameOfLinkedFile)
 Future<Map<String, String>> getHardLinkMapByArchive(String tarGzPath) async {
   final result = <String, String>{};
   final input = InputFileStream(tarGzPath);
   try {
-    // 解压至内存
     final memOut = OutputMemoryStream();
     GZipDecoder().decodeStream(input, memOut);
     final tarBytes = memOut.getBytes();
 
-    // 逐条读取 TarFile，保留 typeFlag/linkName 等信息
     final mem = InputMemoryStream(tarBytes);
     while (!mem.isEOS) {
       final tf = TarFile.read(mem);
-      if (tf.filename.isEmpty) {
-        // 安全退出：遇到结尾填充块
-        break;
-      }
-
-      // typeFlag: '1' 为硬链接，'2' 为符号链接
+      if (tf.filename.isEmpty) break;
       if (tf.typeFlag == '1') {
         final name = tf.filename;
         final target = tf.nameOfLinkedFile;
@@ -72,13 +55,20 @@ Future<Map<String, String>> getHardLinkMapByArchive(String tarGzPath) async {
   return result;
 }
 
-// 为了获取Apk So库路径，我们需要一个MethodChannel
+// MethodChannel 适配
 MethodChannel _channel = const MethodChannel('astrbot_channel');
 
-/// 获取 Apk So 库路径
-/// Gets the path of the Apk So library
+/// 获取 Apk So 库路径 (Android 专用，iOS 返回空或沙盒路径)
 Future<String> getLibPath() async {
-  return await _channel.invokeMethod('lib_path');
+  if (Platform.isIOS) {
+    return ''; // iOS 不支持动态加载外部 so 库，返回空字符串避开逻辑
+  }
+  try {
+    return await _channel.invokeMethod('lib_path');
+  } catch (e) {
+    Log.e('获取 LibPath 失败: $e');
+    return '';
+  }
 }
 
 Pty createPTY({
@@ -88,15 +78,14 @@ Pty createPTY({
 }) {
   Map<String, String> envir = Map.from(Platform.environment);
   envir['HOME'] = RuntimeEnvir.homePath;
-  // proot environment setup
   envir['TERMUX_PREFIX'] = RuntimeEnvir.usrPath;
   envir['TERM'] = 'xterm-256color';
   envir['PATH'] = RuntimeEnvir.path;
-  // proot deps
   envir['PROOT_LOADER'] = '${RuntimeEnvir.binPath}/loader';
   envir['LD_LIBRARY_PATH'] = RuntimeEnvir.binPath;
   envir['PROOT_TMP_DIR'] = RuntimeEnvir.tmpPath;
 
+  // iOS 限制较多，pty 可能需要特殊处理或仅在 Android 开启
   return Pty.start(
     '${RuntimeEnvir.binPath}/${shell ?? 'bash'}',
     arguments: [],
@@ -128,20 +117,14 @@ extension PTYExt on Pty {
     String patchFunction = '$function\n'
         r'''
     #printf "\033[A"
-    #printf "\033[2K"
-    #printf "\033[A"
     #printf "\033[2K"''';
     await shellFile.writeAsString(patchFunction);
     shellFile.watch(events: FileSystemEvent.delete).listen((event) {
       defineFunctionLock.complete();
     });
     File('${tmpDir.path}/shell${shortHash}backup').writeAsStringSync(function);
-    // writeString('printf "\\033[?1049h"\n');
     writeString('source ${shellFile.path} &&');
     writeString('rm -rf ${shellFile.path} \n');
-    //terminal?.buffer.eraseLine();
-    // await Future.delayed(const Duration(milliseconds: 100));
-    // writeString('printf "\\033[?1049l"\n');
     await defineFunctionLock.future;
     Log.i('define function -> done');
   }

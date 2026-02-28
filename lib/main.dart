@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -14,15 +15,17 @@ import 'ui/routes/app_routes.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // 1. 请求通知权限喵✨
+  // 1. 请求通知权限 (双端通用)
   await Permission.notification.request();
   
-  // 2. 🪄 核心：请求“所有文件管理权限”喵awa！
-  // 这样能解决很多 WebView 存取数据时的尴尬报错喵✨
-  if (await Permission.manageExternalStorage.isDenied) {
-    await Permission.manageExternalStorage.request();
+  // 2. 权限适配：仅 Android 需要管理外部存储权限
+  if (Platform.isAndroid) {
+    if (await Permission.manageExternalStorage.isDenied) {
+      await Permission.manageExternalStorage.request();
+    }
   }
   
+  // 3. 初始化前台服务 (iOS 需要在 Info.plist 配置后台运行模式)
   ForegroundServiceManager.init();
   await ForegroundServiceManager.startService();
   
@@ -30,7 +33,13 @@ Future<void> main() async {
     SystemUiOverlay.top,
   ]);
 
-  RuntimeEnvir.initEnvirWithPackageName('com.astrbot.astrbot_android');
+  // 4. 环境初始化适配：根据平台动态获取包名/Bundle ID
+  // 确保在 iOS 下 RuntimeEnvir 也能正确初始化路径
+  String packageName = 'com.astrbot.astrbot_android';
+  if (Platform.isIOS) {
+    packageName = 'com.astrbot.astrbot_ios'; 
+  }
+  RuntimeEnvir.initEnvirWithPackageName(packageName);
   await initSettingStore(RuntimeEnvir.configPath);
 
   runApp(const AstrBot());
@@ -50,7 +59,10 @@ class _AstrBotState extends State<AstrBot> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _startServiceMonitor();
+    // 仅在 Android 上启动服务保活监控，iOS 机制不同由系统管理
+    if (Platform.isAndroid) {
+      _startServiceMonitor();
+    }
   }
 
   void _startServiceMonitor() {
