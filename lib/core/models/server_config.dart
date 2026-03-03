@@ -14,12 +14,11 @@ class ServerConfig {
     required this.name,
     required this.host,
     this.astrBotPort = '6185',
-    this.napCatPort = '6099',
+    this.napCatPort = '6099', // 🪄 修正：严格遵从指令，端口设回 6099 喵！
     this.napCatToken = '',
     this.apiKey = '',
   });
 
-  // 🪄 增加克隆技能：方便动态替换令牌喵✨
   ServerConfig copyWith({
     String? id,
     String? name,
@@ -58,7 +57,7 @@ class ServerConfig {
       name: map['name'] ?? '',
       host: map['host'] ?? '',
       astrBotPort: map['astrBotPort'] ?? '6185',
-      napCatPort: map['napCatPort'] ?? '6099',
+      napCatPort: map['napCatPort'] ?? '6099', // 🪄 默认值同步回归 6099
       napCatToken: map['napCatToken'] ?? '',
       apiKey: map['apiKey'] ?? '',
     );

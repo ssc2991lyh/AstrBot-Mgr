@@ -4,7 +4,7 @@ import '../../controllers/server_controller.dart';
 import '../../../core/models/server_config.dart';
 import '../../routes/app_routes.dart';
 import 'server_edit_page.dart';
-import '../settings/about_page.dart'; // 引入关于页喵✨
+import '../settings/about_page.dart'; 
 
 class ServerListPage extends StatefulWidget {
   const ServerListPage({super.key});
@@ -29,7 +29,7 @@ class _ServerListPageState extends State<ServerListPage> {
         index: _currentIndex,
         children: [
           _buildServerList(controller),
-          const AboutPage(), // 🪄 选项卡 2：关于页喵✨
+          const AboutPage(), 
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(
@@ -85,6 +85,7 @@ class _ServerListPageState extends State<ServerListPage> {
               title: Text(server.name, style: const TextStyle(fontWeight: FontWeight.bold)),
               subtitle: Text('${server.host}:${server.astrBotPort}'),
               trailing: const Icon(Icons.chevron_right),
+              // 🪄 还原：点击依然进入综合控制台页面喵✨
               onTap: () => Get.toNamed(AppRoutes.webview, arguments: server),
               onLongPress: () => _showServerOptions(Get.context!, controller, server),
             ),

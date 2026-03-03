@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:uuid/uuid.dart';
 import '../../controllers/server_controller.dart';
-import '../../../core/models/server_config.dart'; // 修正了路径
+import '../../../core/models/server_config.dart';
 
 class ServerEditPage extends StatefulWidget {
   final ServerConfig? server;
@@ -24,10 +24,13 @@ class _ServerEditPageState extends State<ServerEditPage> {
   @override
   void initState() {
     super.initState();
+    // 🪄 性能与一致性优化：直接从 ServerConfig 的默认实例获取初始值喵✨
+    final defaultConfig = ServerConfig(id: '', name: '', host: '');
+    
     _nameController = TextEditingController(text: widget.server?.name ?? '');
     _hostController = TextEditingController(text: widget.server?.host ?? '');
-    _astrBotPortController = TextEditingController(text: widget.server?.astrBotPort ?? '6185');
-    _napCatPortController = TextEditingController(text: widget.server?.napCatPort ?? '6099');
+    _astrBotPortController = TextEditingController(text: widget.server?.astrBotPort ?? defaultConfig.astrBotPort);
+    _napCatPortController = TextEditingController(text: widget.server?.napCatPort ?? defaultConfig.napCatPort);
     _napCatTokenController = TextEditingController(text: widget.server?.napCatToken ?? '');
     _apiKeyController = TextEditingController(text: widget.server?.apiKey ?? '');
   }
@@ -115,7 +118,7 @@ class _ServerEditPageState extends State<ServerEditPage> {
               controller: _napCatTokenController,
               decoration: const InputDecoration(
                 labelText: 'NapCat WebUI Token',
-                hintText: '可选，用于自动登录 NapCat',
+                hintText: '用于自动登录 NapCat',
               ),
             ),
             const SizedBox(height: 16),
@@ -123,7 +126,7 @@ class _ServerEditPageState extends State<ServerEditPage> {
               controller: _apiKeyController,
               decoration: const InputDecoration(
                 labelText: 'AstrBot OpenAPI Key',
-                hintText: '用于原生 UI 交互 (待实现)',
+                hintText: '用于原生 UI 交互',
               ),
             ),
           ],

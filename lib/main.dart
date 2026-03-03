@@ -13,36 +13,32 @@ import 'core/services/foreground_service.dart';
 import 'ui/routes/app_routes.dart';
 
 Future<void> main() async {
+  // 1. 引擎初始化必须在最前
   WidgetsFlutterBinding.ensureInitialized();
   
-  // 1. 请求通知权限 (双端通用)
-  await Permission.notification.request();
-  
-  // 2. 权限适配：仅 Android 需要管理外部存储权限
-  if (Platform.isAndroid) {
-    if (await Permission.manageExternalStorage.isDenied) {
-      await Permission.manageExternalStorage.request();
-    }
-  }
-  
-  // 3. 初始化前台服务 (iOS 需要在 Info.plist 配置后台运行模式)
-  ForegroundServiceManager.init();
-  await ForegroundServiceManager.startService();
-  
-  SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: [
-    SystemUiOverlay.top,
-  ]);
-
-  // 4. 环境初始化适配：根据平台动态获取包名/Bundle ID
-  // 确保在 iOS 下 RuntimeEnvir 也能正确初始化路径
-  String packageName = 'com.astrbot.astrbot_android';
-  if (Platform.isIOS) {
-    packageName = 'com.astrbot.astrbot_ios'; 
-  }
+  // 2. 🪄 核心修复：数据库初始化必须同步等待！不能 unawaited 喵✨
+  const String packageName = 'com.astrbot.astrbot_android';
   RuntimeEnvir.initEnvirWithPackageName(packageName);
+  
+  // 必须先开门，ServerController 才能拿到数据喵awa
   await initSettingStore(RuntimeEnvir.configPath);
 
+  // 3. 只有权限和前台服务这种“身外之物”才适合异步喵
+  unawaited(_backgroundTasks());
+
   runApp(const AstrBot());
+}
+
+Future<void> _backgroundTasks() async {
+  if (Platform.isAndroid) {
+    await [
+      Permission.notification,
+      Permission.manageExternalStorage,
+    ].request();
+  }
+  
+  ForegroundServiceManager.init();
+  await ForegroundServiceManager.startService();
 }
 
 class AstrBot extends StatefulWidget {
@@ -59,23 +55,15 @@ class _AstrBotState extends State<AstrBot> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    // 仅在 Android 上启动服务保活监控，iOS 机制不同由系统管理
-    if (Platform.isAndroid) {
-      _startServiceMonitor();
-    }
+    Future.delayed(const Duration(seconds: 10), _startMonitor);
   }
 
-  void _startServiceMonitor() {
-    _serviceMonitorTimer = Timer.periodic(const Duration(seconds: 10), (timer) async {
-      final isRunning = await ForegroundServiceManager.isRunningService();
-      final userClickedStop = ForegroundServiceManager.userClickedStopButton;
-
-      if (!isRunning && !userClickedStop) {
-        try {
-          await ForegroundServiceManager.startService();
-        } catch (e) {
-          Log.e('服务重启失败: $e', tag: 'AstrBot');
-        }
+  void _startMonitor() {
+    _serviceMonitorTimer?.cancel();
+    _serviceMonitorTimer = Timer.periodic(const Duration(seconds: 15), (timer) async {
+      if (!await ForegroundServiceManager.isRunningService() && 
+          !ForegroundServiceManager.userClickedStopButton) {
+        await ForegroundServiceManager.startService();
       }
     });
   }
@@ -90,19 +78,15 @@ class _AstrBotState extends State<AstrBot> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return GetMaterialApp(
-      title: 'AstrBot',
+      title: 'AstrBot Manager',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorSchemeSeed: Colors.primaries[3],
+        colorSchemeSeed: Colors.blue,
         useMaterial3: true,
-        brightness: Brightness.light,
+        splashFactory: InkRipple.splashFactory,
       ),
-      darkTheme: ThemeData(
-        colorSchemeSeed: Colors.primaries[3],
-        useMaterial3: true,
-        brightness: Brightness.dark,
-      ),
-      themeMode: ThemeMode.system, 
+      initialRoute: AppRoutes.serverList,
+      getPages: AppRoutes.routes,
       localizationsDelegates: const [
         S.delegate,
         GlobalMaterialLocalizations.delegate,
@@ -110,8 +94,6 @@ class _AstrBotState extends State<AstrBot> with WidgetsBindingObserver {
         GlobalCupertinoLocalizations.delegate,
       ],
       supportedLocales: S.delegate.supportedLocales,
-      initialRoute: AppRoutes.serverList,
-      getPages: AppRoutes.routes,
     );
   }
 }
