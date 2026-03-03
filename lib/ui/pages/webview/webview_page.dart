@@ -136,21 +136,14 @@ class _WebViewPageState extends State<WebViewPage> {
     if (_currentIndex == 0) activeCtrl = _chatController;
     if (_currentIndex == 2 && _napCatToken == null) activeCtrl = _napCatWebController;
     
-    // 🪄 更加激进的返回逻辑：强制等待并判断历史
-    if (activeCtrl != null) {
-      final bool canGoBack = await activeCtrl.canGoBack();
-      if (canGoBack) {
-        await activeCtrl.goBack();
-        return; 
-      }
+    if (activeCtrl != null && await activeCtrl.canGoBack()) {
+      await activeCtrl.goBack();
+      return; 
     }
     
-    // 如果网页不能退了，我们执行 Flutter 的路由退出喵✨
-    if (Navigator.canPop(context)) {
+    // 🪄 优化：明确执行 Get.back()，绝不触发外部 Activity 退出喵✨
+    if (Get.currentRoute == '/webview' || Navigator.canPop(context)) {
       Get.back();
-    } else {
-      // 如果没有上一页了，再交给 Android 系统（此时才会触发那个 Toast）喵 awa
-      SystemNavigator.pop();
     }
   }
 

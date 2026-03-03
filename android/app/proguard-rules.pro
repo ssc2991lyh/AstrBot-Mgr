@@ -14,8 +14,12 @@
 -keep class io.flutter.** { *; }
 -keep class io.flutter.plugins.** { *; }
 
-# 🪄 修正：移除无法识别的占位符类名，改用通用的 Webview 保护规则
+# Webview 保护规则喵✨
 -keepattributes JavascriptInterface
 -keepclassmembers class * {
     @android.webkit.JavascriptInterface <methods>;
 }
+
+# 🪄 核心修复：屏蔽 Google Play Core 相关的 R8 警告喵✨
+# 这些类是 Flutter 引擎可选引用的，找不到不影响正常功能 awa
+-dontwarn com.google.android.play.core.**
