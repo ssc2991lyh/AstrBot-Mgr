@@ -17,8 +17,14 @@ class _ServerListPageState extends State<ServerListPage> {
   int _currentIndex = 0;
 
   @override
+  void initState() {
+    super.initState();
+    Get.find<ServerController>().loadServers();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final controller = Get.put(ServerController());
+    final controller = Get.find<ServerController>();
 
     return Scaffold(
       appBar: AppBar(
@@ -85,7 +91,6 @@ class _ServerListPageState extends State<ServerListPage> {
               title: Text(server.name, style: const TextStyle(fontWeight: FontWeight.bold)),
               subtitle: Text('${server.host}:${server.astrBotPort}'),
               trailing: const Icon(Icons.chevron_right),
-              // 🪄 还原：点击依然进入综合控制台页面喵✨
               onTap: () => Get.toNamed(AppRoutes.webview, arguments: server),
               onLongPress: () => _showServerOptions(Get.context!, controller, server),
             ),

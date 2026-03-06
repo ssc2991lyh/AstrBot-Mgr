@@ -10,20 +10,20 @@ import 'dart:async';
 
 import 'generated/l10n.dart';
 import 'core/services/foreground_service.dart';
+import 'ui/controllers/server_controller.dart'; // 🪄 引入控制器
 import 'ui/routes/app_routes.dart';
 
 Future<void> main() async {
-  // 1. 引擎初始化必须在最前
   WidgetsFlutterBinding.ensureInitialized();
   
-  // 2. 🪄 核心修复：数据库初始化必须同步等待！不能 unawaited 喵✨
   const String packageName = 'com.astrbot.astrbot_android';
   RuntimeEnvir.initEnvirWithPackageName(packageName);
   
-  // 必须先开门，ServerController 才能拿到数据喵awa
   await initSettingStore(RuntimeEnvir.configPath);
 
-  // 3. 只有权限和前台服务这种“身外之物”才适合异步喵
+  // 🪄 核心：在 App 启动时就创建全局单例，永不销毁喵✨
+  Get.put(ServerController());
+
   unawaited(_backgroundTasks());
 
   runApp(const AstrBot());
@@ -80,6 +80,8 @@ class _AstrBotState extends State<AstrBot> with WidgetsBindingObserver {
     return GetMaterialApp(
       title: 'AstrBot Manager',
       debugShowCheckedModeBanner: false,
+      defaultTransition: Transition.cupertino,
+      transitionDuration: const Duration(milliseconds: 300),
       theme: ThemeData(
         colorSchemeSeed: Colors.blue,
         useMaterial3: true,

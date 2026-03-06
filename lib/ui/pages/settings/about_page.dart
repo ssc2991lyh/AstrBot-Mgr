@@ -57,9 +57,9 @@ class AboutPage extends StatelessWidget {
         
         _buildSectionHeader('应用信息'),
         _buildInfoCard([
-          _buildInfoRow(Icons.info_outline, '当前版本', 'v1.1.0 (Android)'),
+          // 🪄 核心：更新为 v1.1.2-fix 喵✨
+          _buildInfoRow(Icons.info_outline, '当前版本', 'v1.1.2-fix (Android)'),
           const Divider(height: 1, indent: 48),
-          // 🪄 增加开发者：YunShuNeko 喵✨
           _buildInfoRow(Icons.person_outline, '开发者', 'TeaQing, YunShuNeko', isDeveloper: true),
         ]),
         
@@ -69,7 +69,6 @@ class AboutPage extends StatelessWidget {
         _buildInfoCard([
           _buildLinkRow('官方网站', 'https://astrbot.app', () => _launchUrl('https://astrbot.app')),
           const Divider(height: 1, indent: 16),
-          // 🪄 修正：去掉了官方文档，更新了 Github 仓库地址喵 awa
           _buildLinkRow('Github 仓库', 'https://github.com/ssc2991lyh/AstrBot-Mgr', () => _launchUrl('https://github.com/ssc2991lyh/AstrBot-Mgr')),
         ]),
         

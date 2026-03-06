@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/scheduler.dart'; // 🪄 引入分帧调度喵✨
 import 'package:get/get.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:global_repository/global_repository.dart'; 
@@ -27,6 +28,7 @@ class _WebViewPageState extends State<WebViewPage> {
   String? _astrBotToken;
   String? _napCatToken;
   
+  // 🪄 核心优化：改回非空初始化，但延迟加载 URL，防止断言错误喵✨
   late final WebViewController _chatController;
   late final WebViewController _napCatWebController; 
   WebViewController? _extensionController; 
@@ -52,121 +54,121 @@ class _WebViewPageState extends State<WebViewPage> {
       _napCatControl.init(serverConfig, token: _napCatToken);
     }
     
-    _initChatCapture();
-    _initNapCatCapture();
+    // 🪄 1. 同步创建控制器实例 (防止 postMessage was null)
+    _chatController = _buildBaseController('chat');
+    _napCatWebController = _buildBaseController('napcat');
+
+    // 🪄 2. 分帧启动加载，确保 UI 线程不卡死喵✨
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      _startLoading();
+    });
     
     _initSystemUI();
-    _initialized = true;
   }
 
-  WebViewController _createController(String url, Function(String) onToken, {Function(WebViewController)? onPageLoad}) {
-    late final WebViewController ctrl;
-    ctrl = WebViewController()
+  WebViewController _buildBaseController(String tag) {
+    return WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(Colors.white)
-      ..addJavaScriptChannel('SpyChannel', onMessageReceived: (msg) => onToken(msg.message))
-      ..setNavigationDelegate(NavigationDelegate(
-        onNavigationRequest: (request) {
-          if (request.url.contains(serverConfig.host) || request.url.contains('localhost')) {
-            return NavigationDecision.navigate;
-          }
-          launchUrl(Uri.parse(request.url), mode: LaunchMode.externalApplication);
-          return NavigationDecision.prevent;
-        },
-        onPageFinished: (_) {
-          if (onPageLoad != null) onPageLoad(ctrl);
-          ctrl.runJavaScript("""
-            setInterval(() => {
-              const t = localStorage.getItem('token') || localStorage.getItem('auth_token');
-              if (t) SpyChannel.postMessage(t);
-            }, 1500);
-          """);
-        },
-      ))
-      ..loadRequest(Uri.parse(url));
-    return ctrl;
+      ..addJavaScriptChannel('SpyChannel_$tag', onMessageReceived: (msg) {
+        if (tag == 'chat') _onChatToken(msg.message);
+        else _onNapCatToken(msg.message);
+      });
   }
 
-  void _initChatCapture() {
-    _chatController = _createController('http://${serverConfig.host}:${serverConfig.astrBotPort}/chat', (token) {
-      if (_astrBotToken == token) return;
-      setState(() { _astrBotToken = token; });
-      box?.put('session_astrbot_${serverConfig.id}', token);
+  void _startLoading() {
+    // 延迟加载，防止启动瞬间 GPU 爆炸喵 awa
+    _chatController.setNavigationDelegate(_buildDelegate('chat'));
+    _chatController.loadRequest(Uri.parse('http://${serverConfig.host}:${serverConfig.astrBotPort}/chat'));
+
+    Future.delayed(const Duration(milliseconds: 600), () {
+      if (!mounted) return;
+      _napCatWebController.setNavigationDelegate(_buildDelegate('napcat'));
+      _napCatWebController.loadRequest(Uri.parse('http://${serverConfig.host}:${serverConfig.napCatPort}/webui'));
+      setState(() => _initialized = true);
     });
   }
 
-  void _initNapCatCapture() {
-    final String napCatUrl = 'http://${serverConfig.host}:${serverConfig.napCatPort}/webui';
-    _napCatWebController = _createController(
-      napCatUrl, 
-      (token) {
-        if (token.length < 50 || _napCatToken == token) return;
-        setState(() { _napCatToken = token; });
-        box?.put('session_napcat_${serverConfig.id}', token);
-        _napCatControl.init(serverConfig, token: token);
+  NavigationDelegate _buildDelegate(String tag) {
+    return NavigationDelegate(
+      onNavigationRequest: (req) {
+        if (req.url.contains(serverConfig.host) || req.url.contains('localhost')) return NavigationDecision.navigate;
+        launchUrl(Uri.parse(req.url), mode: LaunchMode.externalApplication);
+        return NavigationDecision.prevent;
       },
-      onPageLoad: (ctrl) {
-        final masterToken = serverConfig.napCatToken;
-        if (masterToken.isNotEmpty) {
-          ctrl.runJavaScript("""
-            (function() {
-              const tryLogin = setInterval(() => {
-                const pwdInput = document.querySelector('input[type="password"]') || document.querySelector('input[placeholder*="Token"]');
-                const btn = document.querySelector('button');
-                if (pwdInput && btn) {
-                  pwdInput.value = '$masterToken';
-                  pwdInput.dispatchEvent(new Event('input', { bubbles: true }));
-                  btn.click();
-                  clearInterval(tryLogin);
-                }
-              }, 1000);
-              setTimeout(() => clearInterval(tryLogin), 10000);
-            })();
-          """);
-        }
-      }
+      onPageFinished: (_) {
+        if (tag == 'napcat') _injectLoginScript();
+        _injectSpyScript(tag);
+      },
     );
+  }
+
+  void _injectLoginScript() {
+    final masterToken = serverConfig.napCatToken;
+    if (masterToken.isEmpty) return;
+    _napCatWebController.runJavaScript("""
+      (function() {
+        const t = setInterval(() => {
+          const inp = document.querySelector('input[type="password"]') || document.querySelector('input[placeholder*="Token"]');
+          const btn = document.querySelector('button');
+          if (inp && btn) {
+            inp.value = '$masterToken';
+            inp.dispatchEvent(new Event('input', { bubbles: true }));
+            inp.dispatchEvent(new Event('change', { bubbles: true }));
+            setTimeout(() => btn.click(), 100);
+            clearInterval(t);
+          }
+        }, 1000);
+        setTimeout(() => clearInterval(t), 15000);
+      })();
+    """);
+  }
+
+  void _injectSpyScript(String tag) {
+    final controller = tag == 'chat' ? _chatController : _napCatWebController;
+    controller.runJavaScript("setInterval(() => { const t = localStorage.getItem('token') || localStorage.getItem('auth_token'); if (t) window.SpyChannel_$tag.postMessage(t); }, 2000);");
+  }
+
+  void _onChatToken(String t) {
+    if (_astrBotToken == t) return;
+    setState(() => _astrBotToken = t);
+    box?.put('session_astrbot_${serverConfig.id}', t);
+  }
+
+  void _onNapCatToken(String t) {
+    if (t.length < 50 || _napCatToken == t) return;
+    setState(() => _napCatToken = t);
+    box?.put('session_napcat_${serverConfig.id}', t);
+    _napCatControl.init(serverConfig, token: t);
   }
 
   Future<void> _handleBack() async {
     if (_showExtensionStore) { setState(() => _showExtensionStore = false); return; }
     if (_showWebConsole) { setState(() => _showWebConsole = false); return; }
     
-    WebViewController? activeCtrl;
-    if (_currentIndex == 0) activeCtrl = _chatController;
-    if (_currentIndex == 2 && _napCatToken == null) activeCtrl = _napCatWebController;
+    WebViewController? active = _currentIndex == 0 ? _chatController : (_currentIndex == 2 && _napCatToken == null ? _napCatWebController : null);
+    if (active != null && await active.canGoBack()) { await active.goBack(); return; }
     
-    if (activeCtrl != null && await activeCtrl.canGoBack()) {
-      await activeCtrl.goBack();
-      return; 
-    }
-    
-    // 🪄 优化：明确执行 Get.back()，绝不触发外部 Activity 退出喵✨
-    if (Get.currentRoute == '/webview' || Navigator.canPop(context)) {
-      Get.back();
+    // 🪄 终极方案：手动 Pop 路由，不给系统触发 Activity 退出的机会喵✨
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_initialized) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (!_initialized) return const Scaffold(body: Center(child: CircularProgressIndicator(strokeWidth: 2)));
     final dynamicConfig = serverConfig.copyWith(apiKey: _astrBotToken ?? serverConfig.apiKey);
 
     return PopScope(
-      canPop: false, 
-      onPopInvokedWithResult: (didPop, result) async {
-        if (didPop) return;
-        await _handleBack();
-      },
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async { if (!didPop) await _handleBack(); },
       child: Scaffold(
         backgroundColor: Colors.white,
         appBar: AppBar(
           title: Text(_showExtensionStore ? '插件列表' : ['AI 聊天', '仪表盘', 'NapCat 管理', '无用的设置'][_currentIndex]),
           elevation: 0,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () => _handleBack(),
-          ),
+          leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: _handleBack),
           actions: [
             if (_currentIndex == 1 && !_showExtensionStore)
               IconButton(icon: Icon(_showWebConsole ? Icons.phonelink : Icons.web), onPressed: () => setState(() => _showWebConsole = !_showWebConsole)),
@@ -181,18 +183,12 @@ class _WebViewPageState extends State<WebViewPage> {
                 WebViewWidget(controller: _chatController),
                 _showWebConsole 
                   ? WebDashboard(url: 'http://${serverConfig.host}:${serverConfig.astrBotPort}')
-                  : NativeDashboardPage(
-                      key: _dashboardKey, 
-                      serverConfig: dynamicConfig, 
-                      onOpenWebConsole: () => setState(() => _showWebConsole = true),
-                      onOpenExtensionStore: () => setState(() => _showExtensionStore = true),
-                    ),
+                  : NativeDashboardPage(key: _dashboardKey, serverConfig: dynamicConfig, onOpenWebConsole: () => setState(() => _showWebConsole = true), onOpenExtensionStore: () => setState(() => _showExtensionStore = true)),
                 _napCatToken == null ? WebViewWidget(controller: _napCatWebController) : const NapCatPage(),
                 QuickSettingsPage(key: _settingsKey, serverConfig: dynamicConfig),
               ],
             ),
-            if (_showExtensionStore)
-              Positioned.fill(child: Container(color: Colors.white, child: WebViewWidget(controller: _getExtensionController()))),
+            if (_showExtensionStore) Positioned.fill(child: Container(color: Colors.white, child: WebViewWidget(controller: _getExtensionController()))),
           ],
         ),
         bottomNavigationBar: BottomNavigationBar(
@@ -214,10 +210,7 @@ class _WebViewPageState extends State<WebViewPage> {
     if (_showExtensionStore) _extensionController?.reload();
     else if (_currentIndex == 0) _chatController.reload();
     else if (_currentIndex == 1) _dashboardKey.currentState?.refreshWithVersion();
-    else if (_currentIndex == 2) {
-      if (_napCatToken == null) _napCatWebController.reload();
-      else _napCatControl.refreshStatus();
-    }
+    else if (_currentIndex == 2) _napCatToken == null ? _napCatWebController.reload() : _napCatControl.refreshStatus();
   }
 
   WebViewController _getExtensionController() => _extensionController ??= WebViewController()..setJavaScriptMode(JavaScriptMode.unrestricted)..loadRequest(Uri.parse('http://${serverConfig.host}:${serverConfig.astrBotPort}/extension#installed'));
