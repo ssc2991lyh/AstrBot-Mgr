@@ -2,7 +2,14 @@
 
 在移动端设备上查看你的AstrBot的状态！
 
+!新版已出 ⇨https://github.com/ssc2991lyh/AstrBot-Panel
 
+以下为旧版,不再建议使用
+
+.
+.
+.
+.
 
 > ps:没有MacOS的电脑，所以苹果用户可以自己试一下侧载喵
 > 
